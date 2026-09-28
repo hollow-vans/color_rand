@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Color Randomizer</title>
+<style>
+  :root{
+    --bg: #0a0a0a;
+    --gold: #cda545;
+    --gold-bright: #f0cf7d;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html, body{
+    height:100%;
+    background:var(--bg);
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color:var(--gold-bright);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  #stage{
+    width:100%;
+    max-width:420px;
+    padding:24px;
+    text-align:center;
+  }
+  #display{
+    width:100%;
+    aspect-ratio:1/1;
+    max-height:50vh;
+    border-radius:24px;
+    background:#151515;
+    border:2px solid #3d3d3a;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:clamp(2rem, 10vw, 3.5rem);
+    font-weight:700;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:#8f8c85;
+    transition:background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    user-select:none;
+  }
+  #display.locked{ transform:scale(1.03); }
+  #colorPicker{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    margin-top:18px;
+    flex-wrap:wrap;
+  }
+  .swatch{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:8px 12px;
+    border-radius:20px;
+    border:2px solid #3d3d3a;
+    background:#151515;
+    color:#8f8c85;
+    font-size:0.8rem;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    cursor:pointer;
+    transition:border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+    user-select:none;
+  }
+  .swatch .dot{
+    width:14px;
+    height:14px;
+    border-radius:50%;
+  }
+  .swatch.active{
+    border-color:var(--gold);
+    color:var(--gold-bright);
+  }
+  .swatch.disabled{
+    opacity:0.35;
+    cursor:not-allowed;
+  }
+  #hint{
+    margin-top:10px;
+    font-size:0.7rem;
+    color:#8f8c85;
+    letter-spacing:0.05em;
+  }
+  button{
+    margin-top:28px;
+    width:100%;
+    padding:18px;
+    font-size:1.1rem;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    background:none;
+    border:2px solid var(--gold);
+    color:var(--gold);
+    border-radius:12px;
+    cursor:pointer;
+    transition:background 0.2s ease, color 0.2s ease;
+  }
+  button:active{ background:var(--gold); color:#0a0a0a; }
+  button:disabled{ opacity:0.5; cursor:not-allowed; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="display">Ready</div>
+  <div id="colorPicker"></div>
+  <div id="hint">Tap a color to include or exclude it — pick 2, 3, or 4</div>
+  <button id="spinBtn">Pick a Color</button>
+</div>
+
+<script>
+const COLORS = [
+  { name: "Blue",   hex: "#2e5eaa" },
+  { name: "Red",    hex: "#b5322c" },
+  { name: "Green",  hex: "#2f7a3d" },
+  { name: "Yellow", hex: "#d4b02a" }
+];
+
+const activeNames = new Set(COLORS.map(c => c.name)); // all 4 active by default
+const MIN_ACTIVE = 2;
+
+const display = document.getElementById('display');
+const btn = document.getElementById('spinBtn');
+const pickerEl = document.getElementById('colorPicker');
+
+function activeColors(){
+  return COLORS.filter(c => activeNames.has(c.name));
+}
+
+function renderPicker(){
+  pickerEl.innerHTML = '';
+  COLORS.forEach(c => {
+    const chip = document.createElement('div');
+    const isActive = activeNames.has(c.name);
+    const wouldGoBelowMin = isActive && activeNames.size <= MIN_ACTIVE;
+    chip.className = 'swatch' + (isActive ? ' active' : '') + (wouldGoBelowMin ? ' disabled' : '');
+    chip.innerHTML = `<span class="dot" style="background:${c.hex}"></span>${c.name}`;
+    chip.addEventListener('click', () => {
+      if(isActive){
+        if(activeNames.size > MIN_ACTIVE) activeNames.delete(c.name);
+      } else {
+        activeNames.add(c.name);
+      }
+      renderPicker();
+    });
+    pickerEl.appendChild(chip);
+  });
+}
+renderPicker();
+
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 0.95;
+  window.speechSynthesis.speak(utter);
+}
+
+function randomColor(pool, exclude){
+  let pick;
+  do{ pick = pool[Math.floor(Math.random() * pool.length)]; }
+  while(exclude && pick.name === exclude && pool.length > 1);
+  return pick;
+}
+
+let spinning = false;
+
+btn.addEventListener('click', () => {
+  if(spinning) return;
+  const pool = activeColors();
+  if(pool.length < MIN_ACTIVE) return;
+
+  spinning = true;
+  btn.disabled = true;
+  display.classList.remove('locked');
+
+  let ticks = 0;
+  const totalTicks = 14;
+  let lastShown = null;
+
+  const interval = setInterval(() => {
+    const c = randomColor(pool, lastShown);
+    lastShown = c.name;
+    display.textContent = c.name;
+    display.style.background = c.hex;
+    display.style.color = "#fff";
+    ticks++;
+    if(ticks >= totalTicks){
+      clearInterval(interval);
+      const final = randomColor(pool);
+      display.textContent = final.name;
+      display.style.background = final.hex;
+      display.classList.add('locked');
+      speak(final.name);
+      spinning = false;
+      btn.disabled = false;
+    }
+  }, 90);
+});
+</script>
+</body>
+</html>
